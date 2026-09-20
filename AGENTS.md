@@ -114,7 +114,9 @@ pnpm db:seed          # popula ~40 produtos reais do ramo
 
 - **Fase 0 — planejamento**: concluída, plano aprovado.
 - **Fase 1 — setup**: em andamento. Scaffold Next.js + Tailwind criado;
-  home com seção de rolagem (hero) usando 4 fotos de pratos como fundo,
-  trocando por seção via `IntersectionObserver`
-  (`src/components/scroll-hero.tsx`). Faltam: Prisma/PostgreSQL, schema,
-  seeds, NextAuth, scripts de test/typecheck no `package.json`.
+  home com seção de rolagem (hero) usando 4 fotos de pratos + 1 vídeo
+  como fundo, trocando por seção via `IntersectionObserver`
+  (`src/components/scroll-hero.tsx`). O vídeo é servido em WebM/VP9
+  (`public/videos/pratos.webm`, gerado com `ffmpeg`) com fallback MP4/H.264
+  (`public/videos/pratos.mp4`) via `<source>` para compatibilidade com
+  Safari. Faltam: Prisma/PostgreSQL, schema, seeds, NextAuth.
