@@ -113,10 +113,24 @@ pnpm db:seed          # popula ~40 produtos reais do ramo
 ## Status do projeto
 
 - **Fase 0 — planejamento**: concluída, plano aprovado.
-- **Fase 1 — setup**: em andamento. Scaffold Next.js + Tailwind criado;
-  home com seção de rolagem (hero) usando 4 fotos de pratos + 1 vídeo
-  como fundo, trocando por seção via `IntersectionObserver`
-  (`src/components/scroll-hero.tsx`). O vídeo é servido em WebM/VP9
-  (`public/videos/pratos.webm`, gerado com `ffmpeg`) com fallback MP4/H.264
-  (`public/videos/pratos.mp4`) via `<source>` para compatibilidade com
-  Safari. Faltam: Prisma/PostgreSQL, schema, seeds, NextAuth.
+- **Fase 1 — setup**: concluída.
+  - Scaffold Next.js + Tailwind; home com seção de rolagem (hero) usando
+    4 fotos de pratos + 1 vídeo como fundo, trocando por seção via
+    `IntersectionObserver` (`src/components/scroll-hero.tsx`). Vídeo em
+    WebM/VP9 com fallback MP4/H.264 via `<source>`.
+  - Prisma 7 + PostgreSQL: schema completo em `prisma/schema.prisma`
+    (produto, variação, lote/validade, alérgenos, kit, carrinho, pedido,
+    remessa, pagamento, cupom, configuração da loja). A URL do banco fica
+    em `prisma7.config.ts` (não em `schema.prisma`); o client usa
+    `@prisma/adapter-pg` (`src/lib/prisma.ts`) — Prisma 7 exige um driver
+    adapter explícito, não lê `DATABASE_URL` sozinho.
+  - Seed (`prisma/seed.ts`, rodar com `pnpm db:seed`) com 46 produtos
+    reais (japoneses, coreanos, chineses, tailandeses), incluindo 2 kits,
+    lotes com validade e movimentação de estoque de entrada.
+  - NextAuth (v4/Auth.js) com credenciais (bcrypt) + Google — testado de
+    ponta a ponta (registro, login, sessão JWT com `perfil`). Login com
+    Google fica desabilitado (não mockado) e loga um aviso claro quando
+    `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` não estão definidos.
+  - Pendente para as próximas fases: páginas de cadastro/login, catálogo,
+    carrinho, checkout, Mercado Pago, Melhor Envio, upload S3, painel
+    admin.

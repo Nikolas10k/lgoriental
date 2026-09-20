@@ -1,0 +1,480 @@
+// Schema do LG Oriental — ver regras de negócio em AGENTS.md.
+// A URL do banco fica em `prisma7.config.ts` (não aqui), a partir do Prisma 7.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Autenticação (NextAuth) e usuários
+// ---------------------------------------------------------------------------
+
+enum PerfilUsuario {
+  DONO
+  ESTOQUE
+  ATENDIMENTO
+  CLIENTE
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String        @unique
+  emailVerified DateTime?
+  image         String?
+  senhaHash     String? // null quando o usuário só usa login Google
+  cpfCnpj       String?       @unique
+  perfil        PerfilUsuario @default(CLIENTE)
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+  excluidoEm    DateTime? // soft delete para exclusão de conta (LGPD)
+
+  accounts             Account[]
+  sessions             Session[]
+  enderecos            Endereco[]
+  carrinho             Carrinho?
+  pedidos              Pedido[]
+  avaliacoes           Avaliacao[]
+  movimentacoesEstoque MovimentacaoEstoque[]
+
+  @@map("usuarios")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("contas_oauth")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessoes")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("tokens_verificacao")
+}
+
+model Endereco {
+  id          String  @id @default(cuid())
+  userId      String
+  apelido     String? // ex.: "Casa", "Trabalho"
+  cep         String
+  logradouro  String
+  numero      String
+  complemento String?
+  bairro      String
+  cidade      String
+  uf          String  @db.Char(2)
+  principal   Boolean @default(false)
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pedidos Pedido[]
+
+  @@map("enderecos")
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo
+// ---------------------------------------------------------------------------
+
+enum Origem {
+  JAPONESA
+  COREANA
+  CHINESA
+  TAILANDESA
+  OUTRA
+}
+
+enum Conservacao {
+  SECO
+  RESFRIADO
+  CONGELADO
+}
+
+enum Alergeno {
+  GLUTEN
+  SOJA
+  CRUSTACEOS
+  AMENDOIM
+  LEITE
+  PEIXE
+  GERGELIM
+}
+
+enum UnidadeVenda {
+  UNIDADE
+  PACOTE
+  CAIXA
+}
+
+model Categoria {
+  id                  String @id @default(cuid())
+  nome                String
+  slug                String @unique
+  diasValidadeMinimos Int    @default(7) // limite padrão da categoria (FEFO)
+
+  produtos Produto[]
+
+  @@map("categorias")
+}
+
+model Produto {
+  id                          String      @id @default(cuid())
+  sku                         String      @unique
+  nomeOriginal                String // nome no idioma de origem (ex.: "醤油")
+  nomePt                      String // nome em português (ex.: "Molho de soja")
+  slug                        String      @unique
+  descricao                   String      @db.Text
+  categoriaId                 String
+  origem                      Origem
+  conservacao                 Conservacao
+  ingredientes                String      @db.Text
+  tabelaNutricional           Json // estrutura livre (porção, calorias, macros...)
+  origemImportador            String
+  numeroRegistro              String?
+  diasValidadeMinimosOverride Int? // sobrescreve o padrão da categoria quando definido
+  pesoVariavel                Boolean     @default(false)
+  pesoNominalGramas           Int? // obrigatório quando pesoVariavel = true
+  isKit                       Boolean     @default(false)
+  ativo                       Boolean     @default(true)
+  criadoEm                    DateTime    @default(now())
+  atualizadoEm                DateTime    @updatedAt
+
+  categoria            Categoria             @relation(fields: [categoriaId], references: [id])
+  alergenos            ProdutoAlergeno[]
+  apelidos             ProdutoApelido[]
+  variacoes            Variacao[]
+  lotes                LoteEstoque[]
+  movimentacoesEstoque MovimentacaoEstoque[]
+  avaliacoes           Avaliacao[]
+  itensKit             KitItem[]             @relation("KitComponentes")
+  componentesDoKit     KitItem[]             @relation("KitPai")
+
+  @@index([categoriaId])
+  @@index([origem])
+  @@index([conservacao])
+  @@map("produtos")
+}
+
+// Apelidos/sinônimos de busca — ex.: "shoyu" para "molho de soja".
+model ProdutoApelido {
+  id        String @id @default(cuid())
+  produtoId String
+  termo     String
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, termo])
+  @@index([termo])
+  @@map("produto_apelidos")
+}
+
+model ProdutoAlergeno {
+  produtoId String
+  alergeno  Alergeno
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@id([produtoId, alergeno])
+  @@map("produto_alergenos")
+}
+
+// Kit/combo: um produto com isKit=true consome estoque dos componentes.
+model KitItem {
+  id                  String @id @default(cuid())
+  kitId               String
+  componenteProdutoId String
+  quantidade          Int
+
+  kit               Produto @relation("KitPai", fields: [kitId], references: [id], onDelete: Cascade)
+  componenteProduto Produto @relation("KitComponentes", fields: [componenteProdutoId], references: [id])
+
+  @@unique([kitId, componenteProdutoId])
+  @@map("kit_itens")
+}
+
+// Unidade, pacote ou caixa fechada — cada uma com preço próprio.
+// `unidadesConsumidas` define quantas unidades do estoque-base essa
+// variação consome por venda (ex.: caixa com 12 = 12).
+model Variacao {
+  id                 String       @id @default(cuid())
+  produtoId          String
+  tipo               UnidadeVenda
+  nome               String // ex.: "Unidade", "Pacote com 6", "Caixa fechada (24un)"
+  skuVariacao        String       @unique
+  precoCentavos      Int
+  unidadesConsumidas Int          @default(1)
+  ativo              Boolean      @default(true)
+
+  produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  itensCarrinho ItemCarrinho[]
+  itensPedido   ItemPedido[]
+
+  @@index([produtoId])
+  @@map("variacoes")
+}
+
+// ---------------------------------------------------------------------------
+// Estoque — lotes (FEFO) e movimentação
+// ---------------------------------------------------------------------------
+
+model LoteEstoque {
+  id            String   @id @default(cuid())
+  produtoId     String
+  codigoLote    String
+  quantidade    Int // em unidades-base do produto
+  validade      DateTime
+  custoCentavos Int?
+  criadoEm      DateTime @default(now())
+
+  produto       Produto               @relation(fields: [produtoId], references: [id])
+  movimentacoes MovimentacaoEstoque[]
+
+  @@unique([produtoId, codigoLote])
+  @@index([produtoId, validade]) // suporta a separação FEFO (vence primeiro, sai primeiro)
+  @@map("lotes_estoque")
+}
+
+enum TipoMovimentoEstoque {
+  ENTRADA
+  SAIDA_VENDA
+  AJUSTE
+  DEVOLUCAO
+  PERDA
+}
+
+// Toda mutação de estoque deve gerar um registro aqui, dentro da mesma
+// transação que alterou `LoteEstoque.quantidade`.
+model MovimentacaoEstoque {
+  id          String               @id @default(cuid())
+  produtoId   String
+  loteId      String?
+  tipo        TipoMovimentoEstoque
+  quantidade  Int // positivo (entrada) ou negativo (saída)
+  motivo      String
+  pedidoId    String?
+  criadoPorId String?
+  criadoEm    DateTime             @default(now())
+
+  produto   Produto      @relation(fields: [produtoId], references: [id])
+  lote      LoteEstoque? @relation(fields: [loteId], references: [id])
+  pedido    Pedido?      @relation(fields: [pedidoId], references: [id])
+  criadoPor User?        @relation(fields: [criadoPorId], references: [id])
+
+  @@index([produtoId])
+  @@index([pedidoId])
+  @@map("movimentacoes_estoque")
+}
+
+// ---------------------------------------------------------------------------
+// Carrinho
+// ---------------------------------------------------------------------------
+
+model Carrinho {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  atualizadoEm DateTime @updatedAt
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itens ItemCarrinho[]
+
+  @@map("carrinhos")
+}
+
+model ItemCarrinho {
+  id         String @id @default(cuid())
+  carrinhoId String
+  variacaoId String
+  quantidade Int
+
+  carrinho Carrinho @relation(fields: [carrinhoId], references: [id], onDelete: Cascade)
+  variacao Variacao @relation(fields: [variacaoId], references: [id])
+
+  @@unique([carrinhoId, variacaoId])
+  @@map("itens_carrinho")
+}
+
+// ---------------------------------------------------------------------------
+// Pedido, remessas (carrinho misto) e pagamento
+// ---------------------------------------------------------------------------
+
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  SEPARANDO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+model Pedido {
+  id               String       @id @default(cuid())
+  userId           String
+  enderecoId       String
+  status           StatusPedido @default(AGUARDANDO_PAGAMENTO)
+  subtotalCentavos Int
+  freteCentavos    Int
+  totalCentavos    Int
+  cupomId          String?
+  criadoEm         DateTime     @default(now())
+  atualizadoEm     DateTime     @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id])
+  endereco             Endereco              @relation(fields: [enderecoId], references: [id])
+  cupom                Cupom?                @relation(fields: [cupomId], references: [id])
+  remessas             Remessa[]
+  itens                ItemPedido[]
+  pagamento            Pagamento?
+  movimentacoesEstoque MovimentacaoEstoque[]
+
+  @@index([userId])
+  @@map("pedidos")
+}
+
+// Carrinho misto (seco + resfriado/congelado) gera remessas separadas,
+// cada uma com seu próprio frete.
+model Remessa {
+  id                String      @id @default(cuid())
+  pedidoId          String
+  conservacao       Conservacao
+  freteCentavos     Int
+  transportadora    String?
+  codigoRastreio    String?
+  prazoEstimadoDias Int?
+
+  pedido Pedido       @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  itens  ItemPedido[]
+
+  @@map("remessas")
+}
+
+model ItemPedido {
+  id                            String @id @default(cuid())
+  pedidoId                      String
+  remessaId                     String
+  variacaoId                    String
+  nomeProdutoSnapshot           String
+  precoUnitarioCentavosSnapshot Int
+  quantidade                    Int
+  pesoNominalGramas             Int?
+  pesoRealGramas                Int? // preenchido na separação, para produtos de peso variável
+  ajusteValorCentavos           Int? // diferença entre peso nominal e peso real cobrada/creditada
+
+  pedido   Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  remessa  Remessa  @relation(fields: [remessaId], references: [id], onDelete: Cascade)
+  variacao Variacao @relation(fields: [variacaoId], references: [id])
+
+  @@map("itens_pedido")
+}
+
+enum MetodoPagamento {
+  PIX
+  CARTAO
+  BOLETO
+}
+
+enum StatusPagamento {
+  PENDENTE
+  APROVADO
+  RECUSADO
+  ESTORNADO
+}
+
+model Pagamento {
+  id             String          @id @default(cuid())
+  pedidoId       String          @unique
+  provedor       String          @default("MERCADO_PAGO")
+  metodo         MetodoPagamento
+  status         StatusPagamento @default(PENDENTE)
+  externalId     String          @unique // id do pagamento no Mercado Pago — chave de idempotência do webhook
+  valorCentavos  Int
+  payloadWebhook Json?
+  criadoEm       DateTime        @default(now())
+  atualizadoEm   DateTime        @updatedAt
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("pagamentos")
+}
+
+// ---------------------------------------------------------------------------
+// Cupons, avaliações e configuração da loja
+// ---------------------------------------------------------------------------
+
+enum TipoDesconto {
+  PERCENTUAL
+  FIXO
+}
+
+model Cupom {
+  id             String       @id @default(cuid())
+  codigo         String       @unique
+  tipoDesconto   TipoDesconto
+  valor          Int // percentual (0-100) ou centavos, conforme tipoDesconto
+  validoAte      DateTime?
+  usoMaximo      Int?
+  usosRealizados Int          @default(0)
+  ativo          Boolean      @default(true)
+
+  pedidos Pedido[]
+
+  @@map("cupons")
+}
+
+model Avaliacao {
+  id         String   @id @default(cuid())
+  produtoId  String
+  userId     String
+  nota       Int // 1 a 5
+  comentario String?  @db.Text
+  criadoEm   DateTime @default(now())
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, userId])
+  @@map("avaliacoes")
+}
+
+// Parâmetros de loja configuráveis (linha única).
+model ConfiguracaoLoja {
+  id                         Int      @id @default(1)
+  pedidoMinimoCentavos       Int      @default(0)
+  freteGratisAcimaDeCentavos Int?
+  prazoMaximoResfriadoDias   Int      @default(3)
+  prazoMaximoCongeladoDias   Int      @default(5)
+  atualizadoEm               DateTime @updatedAt
+
+  @@map("configuracao_loja")
+}
