@@ -1,13 +1,24 @@
+import type { Origem } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import { origemLabel } from "@/lib/labels";
 import { ProductCard } from "@/components/product-card";
 
 export const metadata = {
   title: "Catálogo — Luiz Oriental",
 };
 
-export default async function ProdutosPage() {
+const origensValidas = Object.keys(origemLabel) as Origem[];
+
+export default async function ProdutosPage({
+  searchParams,
+}: PageProps<"/produtos">) {
+  const { origem: origemParam } = await searchParams;
+  const origem = origensValidas.includes(origemParam as Origem)
+    ? (origemParam as Origem)
+    : undefined;
+
   const produtos = await prisma.produto.findMany({
-    where: { ativo: true },
+    where: { ativo: true, ...(origem ? { origem } : {}) },
     orderBy: { nomePt: "asc" },
     include: {
       variacoes: {
@@ -24,7 +35,7 @@ export default async function ProdutosPage() {
     <main className="min-h-screen bg-black px-4 pb-16 pt-24 sm:px-8 sm:pt-28 lg:px-12">
       <div className="mx-auto max-w-6xl">
         <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-          Catálogo
+          {origem ? `Catálogo — ${origemLabel[origem]}` : "Catálogo"}
         </h1>
         <p className="mt-2 text-sm text-white/60">
           {produtosComPreco.length} produtos disponíveis.
