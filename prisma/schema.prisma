@@ -1,4 +1,4 @@
-// Schema do LG Oriental — ver regras de negócio em AGENTS.md.
+// Schema do Luiz Oriental — ver regras de negócio em AGENTS.md.
 // A URL do banco fica em `prisma7.config.ts` (não aqui), a partir do Prisma 7.
 
 generator client {

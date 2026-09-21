@@ -1,4 +1,4 @@
-# LG Oriental
+# Luiz Oriental
 
 E-commerce de alimentos orientais (japoneses, coreanos, chineses e
 tailandeses). Veja stack, convenções e regras de negócio em

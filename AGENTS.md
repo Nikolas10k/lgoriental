@@ -8,7 +8,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# LG Oriental — E-commerce de alimentos orientais
+# Luiz Oriental — E-commerce de alimentos orientais
 
 Loja virtual de produtos alimentícios japoneses, coreanos, chineses e
 tailandeses. Este documento é a referência viva do projeto: stack,

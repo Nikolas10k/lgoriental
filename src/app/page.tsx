@@ -3,7 +3,7 @@ import { ScrollHero, type ScrollHeroSection } from "@/components/scroll-hero";
 const sections: ScrollHeroSection[] = [
   {
     media: { type: "image", src: "/images/hero/prato-01.jpg" },
-    eyebrow: "LG Oriental",
+    eyebrow: "Luiz Oriental",
     title: "Sabores originais do oriente, direto na sua casa",
     body: "Produtos japoneses, coreanos, chineses e tailandeses selecionados, com procedência e validade rastreadas do estoque até a sua porta.",
   },
