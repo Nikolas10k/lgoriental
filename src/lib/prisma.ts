@@ -16,10 +16,12 @@ function createPrismaClient(): PrismaClient {
 }
 
 function getPrismaClient(): PrismaClient {
+  // Sempre reaproveita a mesma instância (mesmo processo = mesma pool de
+  // conexões). Em dev isso também evita recriar o client a cada hot-reload;
+  // em produção é ainda mais crítico — sem isso, cada acesso a `prisma.algo`
+  // criaria uma pool nova e esgotaria as conexões do banco em segundos.
   if (!globalForPrisma.prisma) {
-    const client = createPrismaClient();
-    if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = client;
-    return client;
+    globalForPrisma.prisma = createPrismaClient();
   }
   return globalForPrisma.prisma;
 }
@@ -28,8 +30,14 @@ function getPrismaClient(): PrismaClient {
 // realmente acessado. Isso evita que o build do Next (que importa as
 // rotas para coletar metadados) quebre em ambientes sem banco
 // configurado ainda — o erro continua explícito, só que em runtime.
+//
+// Métodos são retornados com `bind(client)`: sem isso, `prisma.$transaction(...)`
+// executa com `this` apontando para o Proxy (não para o client real), o que
+// quebra o rastreamento interno de transação do Prisma ("Transaction not found").
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop, receiver) {
-    return Reflect.get(getPrismaClient(), prop, receiver);
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
   },
 });
